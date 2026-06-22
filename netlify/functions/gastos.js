@@ -5,7 +5,11 @@ function emptyMonth() {
 }
 
 exports.handler = async function (event) {
-  const store = getStore('gastos');
+  const store = getStore({
+    name: 'gastos',
+    siteID: process.env.BLOBS_SITE_ID,
+    token: process.env.BLOBS_TOKEN,
+  });
 
   if (event.httpMethod === 'GET') {
     const month = event.queryStringParameters && event.queryStringParameters.month;
