@@ -93,12 +93,36 @@ header h1 { margin: 0; font-size: 19px; font-weight: 800; }
   background: #fff8e1; color: #8a6c14; border-radius: 10px; padding: 10px 12px;
   font-size: 12px; margin-bottom: 14px;
 }
+
+#authScreen {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px;
+}
+.auth-card {
+  background: #fff; border-radius: 16px; padding: 28px 24px; width: 100%; max-width: 340px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.08); display: flex; flex-direction: column; gap: 10px; text-align: center;
+}
+.auth-logo { font-size: 36px; }
+.auth-card h2 { margin: 0 0 6px; font-size: 18px; color: #142540; }
+.auth-card input {
+  padding: 11px; border-radius: 8px; border: 1px solid #d8dfeb; font-size: 14px; font-family: inherit;
+}
+.auth-error { color: #dc2626; font-size: 12px; min-height: 14px; }
+.auth-toggle { color: #1d3f7a; font-size: 13px; text-decoration: none; margin-top: 4px; }
+.who-bar { color: rgba(255,255,255,0.85); font-size: 12px; margin-top: 4px; }
+.logout-btn {
+  position: absolute; right: 14px; top: 46px; background: none; border: none; font-size: 16px;
+  color: #fff; opacity: 0.85;
+}
 </style>
 </head>
 <body>
+<div id="authScreen"></div>
+<div id="app" style="display:none">
 <header>
   <button class="eye-btn" id="eyeBtn" onclick="toggleEye()">👁️</button>
+  <button class="logout-btn" onclick="logout()">🚪 Salir</button>
   <h1>💶 Gastos Gonzalo & Sofía</h1>
+  <div class="who-bar" id="whoLabel"></div>
   <div class="month-nav">
     <button onclick="changeMonth(-1)">‹</button>
     <span class="month-label" id="monthLabel"></span>
@@ -111,6 +135,7 @@ header h1 { margin: 0; font-size: 19px; font-weight: 800; }
   <button class="tab-btn" onclick="showTab('salarios', this)">Salarios</button>
 </div>
 <div id="content"><div class="loading-note">Cargando…</div></div>
+</div>
 
 <script>
 const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -125,6 +150,70 @@ let currentTab = 'comunes';
 let hideAmounts = localStorage.getItem('gc_hide') === '1';
 let monthData = { comunes: [], extras: [], salarios: [] };
 let loaded = false;
+let authMode = 'login';
+
+function authHeaders() {
+  return { 'Authorization': 'Bearer ' + (localStorage.getItem('gc_token') || '') };
+}
+
+function renderAuth() {
+  const isLogin = authMode === 'login';
+  document.getElementById('authScreen').innerHTML = `
+    <div class="auth-card">
+      <div class="auth-logo">💶</div>
+      <h2>${isLogin ? 'Iniciar sesión' : 'Crear cuenta'}</h2>
+      <input type="text" id="auth_user" placeholder="Usuario" autocomplete="username">
+      <input type="password" id="auth_pass" placeholder="Contraseña" autocomplete="${isLogin ? 'current-password' : 'new-password'}">
+      ${isLogin ? '' : '<input type="password" id="auth_pass2" placeholder="Confirmar contraseña" autocomplete="new-password">'}
+      <div class="auth-error" id="authError"></div>
+      <button class="add-btn" onclick="submitAuth()">${isLogin ? 'Entrar' : 'Crear cuenta'}</button>
+      <a href="#" class="auth-toggle" onclick="toggleAuthMode(event)">${isLogin ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Inicia sesión'}</a>
+    </div>`;
+}
+
+function toggleAuthMode(e) {
+  e.preventDefault();
+  authMode = authMode === 'login' ? 'signup' : 'login';
+  renderAuth();
+}
+
+function submitAuth() {
+  const username = document.getElementById('auth_user').value.trim();
+  const password = document.getElementById('auth_pass').value;
+  const confirmPassword = authMode === 'signup' ? document.getElementById('auth_pass2').value : undefined;
+  const errEl = document.getElementById('authError');
+  errEl.textContent = '';
+  if (!username || !password) { errEl.textContent = 'Rellena usuario y contraseña.'; return; }
+  fetch('/.netlify/functions/auth', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: authMode, username, password, confirmPassword })
+  })
+    .then(r => r.json().then(data => ({ ok: r.ok, data })))
+    .then(({ ok, data }) => {
+      if (!ok) { errEl.textContent = data.error || 'Error'; return; }
+      localStorage.setItem('gc_token', data.token);
+      localStorage.setItem('gc_user', data.username);
+      showApp();
+    })
+    .catch(() => { errEl.textContent = 'No se pudo conectar.'; });
+}
+
+function showApp() {
+  document.getElementById('authScreen').style.display = 'none';
+  document.getElementById('app').style.display = '';
+  document.getElementById('whoLabel').textContent = 'Sesión: ' + (localStorage.getItem('gc_user') || '');
+  loadMonth();
+}
+
+function logout() {
+  localStorage.removeItem('gc_token');
+  localStorage.removeItem('gc_user');
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('authScreen').style.display = '';
+  authMode = 'login';
+  renderAuth();
+}
 
 function monthLabelText(m) {
   const [y, mo] = m.split('-').map(Number);
@@ -165,14 +254,18 @@ function loadMonth() {
   loaded = false;
   document.getElementById('monthLabel').textContent = monthLabelText(currentMonth);
   document.getElementById('content').innerHTML = '<div class="loading-note">Cargando…</div>';
-  fetch(`${API}?month=${currentMonth}`)
-    .then(r => r.json())
+  fetch(`${API}?month=${currentMonth}`, { headers: authHeaders() })
+    .then(r => {
+      if (r.status === 401) { logout(); return Promise.reject('unauthorized'); }
+      return r.json();
+    })
     .then(data => {
       monthData = { comunes: data.comunes || [], extras: data.extras || [], salarios: data.salarios || [] };
       loaded = true;
       render();
     })
     .catch(() => {
+      if (loaded) return;
       monthData = { comunes: [], extras: [], salarios: [] };
       loaded = true;
       document.getElementById('content').innerHTML = '<div class="empty-note">No se pudo conectar. Revisa tu conexión y desliza para reintentar.</div>';
@@ -182,21 +275,29 @@ function loadMonth() {
 function addEntry(section, entry) {
   fetch(API, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ action: 'add', month: currentMonth, section, entry })
   })
-    .then(r => r.json())
-    .then(data => { monthData[section] = data.list; render(); });
+    .then(r => {
+      if (r.status === 401) { logout(); return Promise.reject('unauthorized'); }
+      return r.json();
+    })
+    .then(data => { monthData[section] = data.list; render(); })
+    .catch(() => {});
 }
 
 function deleteEntry(section, id) {
   fetch(API, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ action: 'delete', month: currentMonth, section, id })
   })
-    .then(r => r.json())
-    .then(data => { monthData[section] = data.list; render(); });
+    .then(r => {
+      if (r.status === 401) { logout(); return Promise.reject('unauthorized'); }
+      return r.json();
+    })
+    .then(data => { monthData[section] = data.list; render(); })
+    .catch(() => {});
 }
 
 function renderGastoForm(section) {
@@ -295,7 +396,11 @@ function render() {
   document.getElementById('content').innerHTML = h;
 }
 
-loadMonth();
+if (localStorage.getItem('gc_token')) {
+  showApp();
+} else {
+  renderAuth();
+}
 </script>
 </body>
 </html>

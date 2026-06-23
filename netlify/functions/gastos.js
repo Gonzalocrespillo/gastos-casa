@@ -1,10 +1,16 @@
 const { getStore } = require('@netlify/blobs');
+const token = require('./_token');
 
 function emptyMonth() {
   return { comunes: [], extras: [], salarios: [] };
 }
 
 exports.handler = async function (event) {
+  const auth = token.verify(event.headers.authorization || event.headers.Authorization);
+  if (!auth) {
+    return { statusCode: 401, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'No autorizado' }) };
+  }
+
   const store = getStore({
     name: 'gastos',
     siteID: process.env.BLOBS_SITE_ID,
