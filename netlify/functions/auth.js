@@ -39,14 +39,6 @@ exports.handler = async function (event) {
     return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ exists: !!existing }) };
   }
 
-  if (action === 'reset_tmp') {
-    if (body.secret !== '9a94bb6d85ca126d1e323fb228f0d2235af0944d118409ca') {
-      return { statusCode: 403, body: JSON.stringify({ error: 'no' }) };
-    }
-    await store.delete(uname);
-    return { statusCode: 200, body: JSON.stringify({ ok: true }) };
-  }
-
   if (!password) {
     return { statusCode: 400, body: JSON.stringify({ error: 'Falta la contraseña' }) };
   }
