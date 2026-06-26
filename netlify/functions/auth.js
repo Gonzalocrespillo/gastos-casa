@@ -6,6 +6,7 @@ const ITERATIONS = 100000;
 const KEYLEN = 32;
 const DIGEST = 'sha256';
 const TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 días
+const ALLOWED_USERS = ['gonzalo', 'sofia'];
 
 function usersStore() {
   return getStore({ name: 'usuarios', siteID: process.env.BLOBS_SITE_ID, token: process.env.BLOBS_TOKEN });
@@ -27,11 +28,20 @@ exports.handler = async function (event) {
   const { action, password, confirmPassword } = body;
   const uname = (body.username || '').trim().toLowerCase();
 
-  if (!uname || !password) {
-    return { statusCode: 400, body: JSON.stringify({ error: 'Faltan usuario o contraseña' }) };
+  if (!ALLOWED_USERS.includes(uname)) {
+    return { statusCode: 403, body: JSON.stringify({ error: 'Usuario no permitido' }) };
   }
 
   const store = usersStore();
+
+  if (action === 'status') {
+    const existing = await store.get(uname, { type: 'json' });
+    return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ exists: !!existing }) };
+  }
+
+  if (!password) {
+    return { statusCode: 400, body: JSON.stringify({ error: 'Falta la contraseña' }) };
+  }
 
   if (action === 'signup') {
     if (password.length < 6) {
