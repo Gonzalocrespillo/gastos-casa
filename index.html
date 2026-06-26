@@ -55,6 +55,9 @@ header h1 { margin: 0; font-size: 19px; font-weight: 800; }
 .t-value.pos { color: #19873f; }
 .t-value.neg { color: #dc2626; }
 .hidden-amt { filter: blur(6px); user-select: none; }
+.balance-bar { background: #eef3fb; border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; }
+.balance-row { display: flex; justify-content: space-between; font-size: 13px; color: #364a6b; padding: 3px 0; }
+.balance-msg { text-align: center; font-weight: 800; color: #1d3f7a; margin-top: 6px; font-size: 14px; }
 
 .entry-form {
   background: #fff; border-radius: 12px; padding: 14px; margin-bottom: 14px;
@@ -375,6 +378,30 @@ function renderGastoList(section) {
     </div>`).join('')}</div>`;
 }
 
+function renderBalanceBar(list) {
+  const hideCls = hideAmounts ? 'hidden-amt' : '';
+  const paid = {};
+  PEOPLE.forEach(p => paid[p] = 0);
+  list.forEach(e => { paid[e.person] = (paid[e.person] || 0) + e.amount; });
+  const total = list.reduce((s, e) => s + e.amount, 0);
+  const half = total / 2;
+  const [p1, p2] = PEOPLE;
+  const diff = (paid[p1] || 0) - half;
+  let msg;
+  if (Math.abs(diff) < 0.01) {
+    msg = 'Cuentas igualadas, nadie debe nada.';
+  } else if (diff > 0) {
+    msg = `${p2} le debe <span class="${hideCls}">${fmt(diff)}</span> a ${p1}`;
+  } else {
+    msg = `${p1} le debe <span class="${hideCls}">${fmt(-diff)}</span> a ${p2}`;
+  }
+  return `<div class="balance-bar">
+    <div class="balance-row"><span>${p1} pagó</span><span class="${hideCls}">${fmt(paid[p1] || 0)}</span></div>
+    <div class="balance-row"><span>${p2} pagó</span><span class="${hideCls}">${fmt(paid[p2] || 0)}</span></div>
+    <div class="balance-msg">${msg}</div>
+  </div>`;
+}
+
 function renderGastosSection(section, title) {
   const total = monthData[section].reduce((s, e) => s + e.amount, 0);
   let h = `<div class="section-title">${title}</div>`;
@@ -382,6 +409,7 @@ function renderGastosSection(section, title) {
     <div class="t-label">Total ${title.toLowerCase()}</div>
     <div class="t-value neg ${hideAmounts ? 'hidden-amt' : ''}">${fmt(total)}</div>
   </div></div>`;
+  if (section === 'comunes') h += renderBalanceBar(monthData[section]);
   h += renderGastoForm(section);
   h += renderGastoList(section);
   return h;
